@@ -5,15 +5,11 @@ struct node_list;
 
 struct node
 {
-    int Id;
     float XPos; 
     float YPos;
     float GlobalDistance;
     float LoacalDistance;
     node *Parent; 
-    node **Neighbours;
-    int NumberOfNeighbours;
-
     node_list *LastNeighbour;
 };
 
