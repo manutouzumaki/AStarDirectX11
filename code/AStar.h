@@ -20,6 +20,12 @@ struct node_list
     node_list *PrevNeighbour;
 };
 
+struct mouse_neighbour_handler
+{
+    node *From;
+    node *To;
+};
+
 struct graph
 {
     node *Nodes;

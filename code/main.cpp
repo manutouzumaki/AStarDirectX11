@@ -4,6 +4,7 @@
 #include <d3dcompiler.h>
 
 #include <Windows.h>
+#include <Windowsx.h>
 #include <stdio.h>
 
 #define Kilobytes(Value) ((Value)*1024LL)
@@ -13,6 +14,9 @@
 
 #define Assert(condition) if(!(condition)) { *(unsigned int *)0 = 0; } 
 #define ArrayCount(Array) (sizeof(Array)/sizeof((Array)[0]))
+void DrawRect(ID3D11DeviceContext *RenderContext, 
+              float X, float Y, float Width, float Height,
+              float R, float G, float B);
 
 #include "math.h"
 #include "Arena.h"
@@ -70,6 +74,28 @@ static char *PixelShaderSource  =
 "   return float4(frag.tex1.rgb, 1);\n"
 "}\0";
 
+// NOTE(manuto): Input Handles.
+#define LBUTTON 0
+#define MBUTTON 1
+#define RBUTTON 2
+
+struct button_state
+{
+    bool IsDown;
+    bool WasDown;
+};
+
+struct mouse_buttons
+{
+    button_state Buttons[3];
+};
+
+struct app_input
+{
+    int MouseX;
+    int MouseY;
+    mouse_buttons *Mouse;
+};
 
 
 static int
@@ -137,6 +163,19 @@ void SetColor(ID3D11DeviceContext *RenderContext, float R, float G, float B)
     memcpy(GPUConstantBufferData.pData, &GlobalConstantBuffer, sizeof(VS_CONSTANT_BUFFER));
     RenderContext->Unmap(GlobalBuffer, 0);
     RenderContext->VSSetConstantBuffers( 0, 1, &GlobalBuffer); 
+}
+
+bool MouseOnClick(app_input *Input, int Button)
+{
+    if(Input->Mouse->Buttons[Button].IsDown != Input->Mouse->Buttons[Button].WasDown)
+    {
+        if(Input->Mouse->Buttons[Button].IsDown)
+        {
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 LRESULT CALLBACK WndProc(HWND   Window,
@@ -268,23 +307,66 @@ void DrawRect(ID3D11DeviceContext *RenderContext,
 }
 
 void 
-DrawLineBetweenNodes(ID3D11DeviceContext *RenderContext, node *Start, node *End)
+ProcesInputMessages(app_input *Input, mouse_buttons *OldMouseButtons, mouse_buttons *ActualMouseButtons)
 {
-    for(float T = 0.0f;
-        T <= 1.0f;
-        T += 0.01f)
+    MSG Message = {};
+    while(PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
     {
-        v2 RectPos = LerpV2({Start->XPos, Start->YPos}, 
-                            {End->XPos, End->YPos}, T);
-        DrawRect(RenderContext, 
-                 RectPos.X, RectPos.Y,
-                 2.0f, 2.0f,
-                 1.0f, 1.0f, 0.5f);
+        switch(Message.message)
+        {
+            case WM_MOUSEMOVE:
+            {
+                Input->MouseX = (int)GET_X_LPARAM(Message.lParam); 
+                Input->MouseY = (int)GET_Y_LPARAM(Message.lParam); 
+            }break;
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            {
+                ActualMouseButtons->Buttons[0].IsDown = ((Message.wParam & MK_LBUTTON) != 0);
+                ActualMouseButtons->Buttons[1].IsDown = ((Message.wParam & MK_MBUTTON) != 0);
+                ActualMouseButtons->Buttons[2].IsDown = ((Message.wParam & MK_RBUTTON) != 0);
+            }break;
+            default:
+            {
+                TranslateMessage(&Message);
+                DispatchMessage(&Message);
+            }break;
+        }
+    }
+    for(int MouseIndex = 0;
+        MouseIndex < 3;
+        ++MouseIndex)
+    {
+        if(OldMouseButtons->Buttons[MouseIndex].IsDown)
+        {  
+            ActualMouseButtons->Buttons[MouseIndex].WasDown = 1;
+        }
+        else
+        { 
+            ActualMouseButtons->Buttons[MouseIndex].WasDown = 0;
+        }
+    }
+
+}
+
+void 
+AddNodeOnMouseClick(app_input *Input, graph *Graph, arena *NodeArena)
+{
+    if(MouseOnClick(Input, LBUTTON))
+    {
+        float X = (float)(Input->MouseX - (640/2));
+        float Y = (float)((480/2) - Input->MouseY);
+        
+        AddNodeToGraph(Graph,  X, Y, NodeArena);
     } 
 }
 
 void
-DrawLineBetweenNeighboursEx(ID3D11DeviceContext *RenderContext, graph *Graph)
+SelectNode(app_input *Input, graph *Graph, mouse_neighbour_handler *MNH, arena *NodeListArena)
 {
     node *FirstNode = Graph->Nodes;
     FirstNode -= (Graph->NodesCount - 1);
@@ -292,15 +374,38 @@ DrawLineBetweenNeighboursEx(ID3D11DeviceContext *RenderContext, graph *Graph)
         NodeIndex < Graph->NodesCount;
         ++NodeIndex)
     {
-        node *ActualNode = FirstNode + NodeIndex;
-        
-        node_list *ActualNodeList = ActualNode->LastNeighbour;
-        while(ActualNodeList)
+        node *ActualNode = FirstNode + NodeIndex; 
+        if(MouseOnClick(Input, RBUTTON))
         {
-            node *ActualNeighbour = ActualNodeList->Neighbour;
-            DrawLineBetweenNodes(RenderContext, ActualNode, ActualNeighbour);
-            ActualNodeList = ActualNodeList->PrevNeighbour;
-        }     
+            float X = (float)(Input->MouseX - (640/2));
+            float Y = (float)((480/2) - Input->MouseY);
+            v2 MousePos = {X, Y};
+            v2 NodePos = {ActualNode->XPos, ActualNode->YPos};
+            v2 MouseRelativeToNode = MousePos - NodePos;
+
+            if(MouseRelativeToNode.X >= 0.0f && MouseRelativeToNode.X <= 10 &&
+               MouseRelativeToNode.Y >= 0.0f && MouseRelativeToNode.Y <= 10)
+            {
+                if(MNH->From == NULL)
+                {
+                    MNH->From = ActualNode;
+                }
+                else
+                {
+                    MNH->To = ActualNode;
+                } 
+
+                if(MNH->From && MNH->To)
+                {
+                    AddNodeToList(MNH->From, MNH->To, NodeListArena); 
+                    AddNodeToList(MNH->To, MNH->From, NodeListArena); 
+                    MNH->From = NULL;
+                    MNH->To = NULL;
+                }
+            }
+        } 
+
+
     }
 }
 
@@ -332,8 +437,7 @@ int WINAPI WinMain(HINSTANCE Instance,
                                 Rect.bottom - Rect.top,
                                 NULL, NULL, Instance, NULL);
     if(Window)
-    {
-        
+    { 
         app_memory AppMemory = {};
         AppMemory.Size = Megabytes(256);
         AppMemory.Memory = VirtualAlloc(0, AppMemory.Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
@@ -345,31 +449,14 @@ int WINAPI WinMain(HINSTANCE Instance,
         InitArena(&AppMemory, &NeighboursArena, Megabytes(20));
         InitArena(&AppMemory, &NodeListArena, Megabytes(20));
 
+        // NOTE(manuto): Input Test
+        app_input Input = {};
+        mouse_buttons OldMouseButtons = {};
+        mouse_buttons ActualMouseButtons = {};
+        mouse_neighbour_handler MNH = {};
         // NOTE(manuto): Test Graph
         graph Graph = {};
-        node *A = AddNodeToGraph(&Graph,  0.0f, 100.0f, &NodeArena);
-        node *B = AddNodeToGraph(&Graph, 100.0f, 200.0f, &NodeArena);
-        node *C = AddNodeToGraph(&Graph, 100.0f, 100.0f, &NodeArena);
-        node *D = AddNodeToGraph(&Graph, 100.0f, 0.0f, &NodeArena);
-        node *E = AddNodeToGraph(&Graph, 200.0f, 100.0f, &NodeArena);
-        // LinkList Test...
-        AddNodeToList(A, B, &NodeListArena); 
-        AddNodeToList(A, D, &NodeListArena); 
-        AddNodeToList(B, A, &NodeListArena);
-        AddNodeToList(A, C, &NodeListArena);
-        AddNodeToList(E, B, &NodeListArena);
-        AddNodeToList(B, C, &NodeListArena);
-        AddNodeToList(B, E, &NodeListArena);
-        AddNodeToList(C, A, &NodeListArena);
-        AddNodeToList(E, C, &NodeListArena);
-        AddNodeToList(E, D, &NodeListArena);
-        AddNodeToList(C, B, &NodeListArena);
-        AddNodeToList(C, E, &NodeListArena);
-        AddNodeToList(D, A, &NodeListArena);
-        AddNodeToList(D, E, &NodeListArena);
-        
-
-        
+ 
         RECT ClientDimensions = {};
         GetClientRect(Window, &ClientDimensions);
         unsigned int Width  = ClientDimensions.right - ClientDimensions.left;
@@ -551,20 +638,12 @@ int WINAPI WinMain(HINSTANCE Instance,
         ShowWindow(Window, nShowCmd);
         while(GlobalRunning)
         {
-            MSG Message = {};
-            while(PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
-            {
-                switch(Message.message)
-                {
-                    default:
-                    {
-                        TranslateMessage(&Message);
-                        DispatchMessage(&Message);
-                    }break;
-                }
-            }
-            
-            // Update and Render
+            ProcesInputMessages(&Input, &OldMouseButtons, &ActualMouseButtons);
+            Input.Mouse = &ActualMouseButtons; 
+            // Update and Render   
+            AddNodeOnMouseClick(&Input, &Graph, &NodeArena);
+            SelectNode(&Input, &Graph, &MNH, &NodeListArena);
+
             float ClearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
             RenderContext->ClearRenderTargetView(BackBuffer, ClearColor);
             
@@ -583,6 +662,7 @@ int WINAPI WinMain(HINSTANCE Instance,
             }
 
             SwapChain->Present(0, 0);
+            OldMouseButtons = ActualMouseButtons;
              
         }
         if(BackBuffer) BackBuffer->Release();
