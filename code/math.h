@@ -228,4 +228,9 @@ mat4 ViewMat4(v3 eye, v3 target, v3 up)
     return result; 
 }
 
+v2 LerpV2(v2 A, v2 B, float T)
+{
+    return A + ((B - A) * T);
+}
+
 #endif

@@ -6,8 +6,20 @@
 #include <Windows.h>
 #include <stdio.h>
 
-#include "math.h"
+#define Kilobytes(Value) ((Value)*1024LL)
+#define Megabytes(Value) (Kilobytes(Value)*1024LL)
+#define Gigabytes(Value) (Megabyytes(Value)*1024LL)
+#define Terabyytes(Value) (terabytes(Value)*1024LL)
 
+#define Assert(condition) if(!(condition)) { *(unsigned int *)0 = 0; } 
+#define ArrayCount(Array) (sizeof(Array)/sizeof((Array)[0]))
+
+#include "math.h"
+#include "Arena.h"
+#include "AStar.h"
+
+#include "Arena.cpp"
+#include "AStar.cpp"
 
 
 
@@ -157,6 +169,11 @@ void InitializeDirecX11(HWND                   Window,
                         IDXGISwapChain         **SwapChain,
                         ID3D11RenderTargetView **BackBuffer)
 {
+    RECT ClientDimensions = {};
+    GetClientRect(Window, &ClientDimensions);
+    unsigned int Width  = ClientDimensions.right - ClientDimensions.left;
+    unsigned int Height = ClientDimensions.bottom - ClientDimensions.top;
+
     // -1: Define the device types and feature level we want to check for.
      D3D_DRIVER_TYPE DriverTypes[] =
     {
@@ -172,12 +189,6 @@ void InitializeDirecX11(HWND                   Window,
     };
     unsigned int DriverTypesCout = ARRAYSIZE(DriverTypes);
     unsigned int FeatureLevelsCount = ARRAYSIZE(FeatureLevels);
-
-    RECT ClientDimensions = {};
-    GetClientRect(Window, &ClientDimensions);
-
-    unsigned int Width  = ClientDimensions.right - ClientDimensions.left;
-    unsigned int Height = ClientDimensions.bottom - ClientDimensions.top;
     
     // -2: Create the Direct3D device, rendering context, and swap chain.
     DXGI_SWAP_CHAIN_DESC SwapChainDesc = {};
@@ -256,6 +267,41 @@ void DrawRect(ID3D11DeviceContext *RenderContext,
     RenderContext->Draw(6, 0);
 }
 
+void DrawLineBetweenNeighbours(ID3D11DeviceContext *RenderContext, graph *Graph)
+{
+    node *FirstNode = Graph->Nodes;
+    FirstNode -= (Graph->NodesCount - 1);
+    for(int NodeIndex = 0;
+        NodeIndex < Graph->NodesCount;
+        ++NodeIndex)
+    {
+        node *ActualNode = FirstNode + NodeIndex;
+
+        node **FirstNeighbour = ActualNode->Neighbours;
+        FirstNeighbour -= (ActualNode->NumberOfNeighbours - 1);
+        for(int NeighbourIndex = 0;
+            NeighbourIndex < ActualNode->NumberOfNeighbours;
+            ++NeighbourIndex)
+        {
+            node **ActualNeighbour = FirstNeighbour + NeighbourIndex;
+
+            for(float T = 0.0f;
+                T <= 1.0f;
+                T += 0.01f)
+            {
+                v2 RectPos = LerpV2({ActualNode->XPos, ActualNode->YPos}, 
+                                    {(*ActualNeighbour)->XPos, (*ActualNeighbour)->YPos}, T);
+
+                DrawRect(RenderContext, 
+                         RectPos.X, RectPos.Y,
+                         2.0f, 2.0f,
+                         1.0f, 1.0f, 0.0f);
+            } 
+        }
+
+    }
+}
+
 int WINAPI WinMain(HINSTANCE Instance,
                    HINSTANCE PrevInstance,
                    LPSTR     lpCmdLine,
@@ -285,6 +331,50 @@ int WINAPI WinMain(HINSTANCE Instance,
                                 NULL, NULL, Instance, NULL);
     if(Window)
     {
+        
+        app_memory AppMemory = {};
+        AppMemory.Size = Megabytes(256);
+        AppMemory.Memory = VirtualAlloc(0, AppMemory.Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+
+        arena NodeArena = {};
+        arena NeighboursArena = {};
+        InitArena(&AppMemory, &NodeArena, Megabytes(20));
+        InitArena(&AppMemory, &NeighboursArena, Megabytes(20));
+
+        // NOTE(manuto): Test Graph
+        graph Graph = {};
+        node *A = AddNodeToGraph(&Graph,  0.0f, 100.0f, &NodeArena);
+        node *B = AddNodeToGraph(&Graph, 100.0f, 200.0f, &NodeArena);
+        node *C = AddNodeToGraph(&Graph, 100.0f, 100.0f, &NodeArena);
+        node *D = AddNodeToGraph(&Graph, 100.0f, 0.0f, &NodeArena);
+        node *E = AddNodeToGraph(&Graph, 200.0f, 100.0f, &NodeArena);
+        node *F = AddNodeToGraph(&Graph, -200.0f, -50.0f, &NodeArena);
+
+        AddNeighboursToNode(A, B, &NeighboursArena);
+        AddNeighboursToNode(A, C, &NeighboursArena);
+        AddNeighboursToNode(A, D, &NeighboursArena);
+
+        AddNeighboursToNode(B, A, &NeighboursArena);
+        AddNeighboursToNode(B, C, &NeighboursArena);
+        AddNeighboursToNode(B, E, &NeighboursArena);
+
+        AddNeighboursToNode(C, A, &NeighboursArena);
+        AddNeighboursToNode(C, B, &NeighboursArena);
+        AddNeighboursToNode(C, E, &NeighboursArena);
+
+        AddNeighboursToNode(D, A, &NeighboursArena);
+        AddNeighboursToNode(D, E, &NeighboursArena);
+
+        AddNeighboursToNode(E, B, &NeighboursArena);
+        AddNeighboursToNode(E, C, &NeighboursArena);
+        AddNeighboursToNode(E, D, &NeighboursArena);
+
+
+        AddNeighboursToNode(F, A, &NeighboursArena);
+        AddNeighboursToNode(F, B, &NeighboursArena);
+        AddNeighboursToNode(F, C, &NeighboursArena);
+        AddNeighboursToNode(F, D, &NeighboursArena);
+        AddNeighboursToNode(F, E, &NeighboursArena);
 
         RECT ClientDimensions = {};
         GetClientRect(Window, &ClientDimensions);
@@ -483,17 +573,21 @@ int WINAPI WinMain(HINSTANCE Instance,
             // Update and Render
             float ClearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
             RenderContext->ClearRenderTargetView(BackBuffer, ClearColor);
+            
 
-            DrawRect(RenderContext, 
-              0.0f, 0.0f, 32.0f, 32.0f,
-              1.0f, 0.0f, 0.0f);
-            DrawRect(RenderContext, 
-              32.0f, 0.0f, 32.0f, 32.0f,
-              0.0f, 1.0f, 0.0f);
-            DrawRect(RenderContext, 
-              0.0f, 32.0f, 32.0f, 32.0f,
-              0.0f, 0.0f, 1.0f);
-
+            DrawLineBetweenNeighbours(RenderContext, &Graph); 
+            node *FirstNode = Graph.Nodes;
+            FirstNode -= (Graph.NodesCount - 1);
+            for(int NodeIndex = 0;
+                NodeIndex < Graph.NodesCount;
+                ++NodeIndex)
+            {
+                node *ActualNode = FirstNode + NodeIndex; 
+                DrawRect(RenderContext, 
+                         ActualNode->XPos, ActualNode->YPos,
+                         10.0f, 10.0f,
+                         1.0f, 0.0f, 0.0f);
+            }
             SwapChain->Present(0, 0);
              
         }
