@@ -1,6 +1,8 @@
 #ifndef ASTAR_H
 #define ASTAR_H
 
+struct node_list;
+
 struct node
 {
     int Id;
@@ -11,6 +13,15 @@ struct node
     node *Parent; 
     node **Neighbours;
     int NumberOfNeighbours;
+
+    node_list *LastNeighbour;
+};
+
+// NOTE(manuto): link-list TEST.
+struct node_list
+{
+    node *Neighbour;
+    node_list *PrevNeighbour;
 };
 
 struct graph

@@ -17,7 +17,13 @@ AddNeighboursToNode(node *Node, node *NeighbourNode, arena *NeighboursArena)
     ++Node->NumberOfNeighbours;    
 }
 
-
-
+void 
+AddNodeToList(node *Node, node *NewNode, arena *NodeListArena)
+{
+    node_list *NewNodeList = (node_list *)PushStruct(NodeListArena, node_list);
+    NewNodeList->Neighbour = NewNode;
+    NewNodeList->PrevNeighbour = Node->LastNeighbour;
+    Node->LastNeighbour = NewNodeList;
+}
 
 

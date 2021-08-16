@@ -267,7 +267,24 @@ void DrawRect(ID3D11DeviceContext *RenderContext,
     RenderContext->Draw(6, 0);
 }
 
-void DrawLineBetweenNeighbours(ID3D11DeviceContext *RenderContext, graph *Graph)
+void 
+DrawLineBetweenNodes(ID3D11DeviceContext *RenderContext, node *Start, node *End)
+{
+    for(float T = 0.0f;
+        T <= 1.0f;
+        T += 0.01f)
+    {
+        v2 RectPos = LerpV2({Start->XPos, Start->YPos}, 
+                            {End->XPos, End->YPos}, T);
+        DrawRect(RenderContext, 
+                 RectPos.X, RectPos.Y,
+                 2.0f, 2.0f,
+                 1.0f, 1.0f, 0.5f);
+    } 
+}
+
+void
+DrawLineBetweenNeighbours(ID3D11DeviceContext *RenderContext, graph *Graph)
 {
     node *FirstNode = Graph->Nodes;
     FirstNode -= (Graph->NodesCount - 1);
@@ -284,21 +301,30 @@ void DrawLineBetweenNeighbours(ID3D11DeviceContext *RenderContext, graph *Graph)
             ++NeighbourIndex)
         {
             node **ActualNeighbour = FirstNeighbour + NeighbourIndex;
-
-            for(float T = 0.0f;
-                T <= 1.0f;
-                T += 0.01f)
-            {
-                v2 RectPos = LerpV2({ActualNode->XPos, ActualNode->YPos}, 
-                                    {(*ActualNeighbour)->XPos, (*ActualNeighbour)->YPos}, T);
-
-                DrawRect(RenderContext, 
-                         RectPos.X, RectPos.Y,
-                         2.0f, 2.0f,
-                         1.0f, 1.0f, 0.0f);
-            } 
+            DrawLineBetweenNodes(RenderContext, ActualNode, *ActualNeighbour);
         }
 
+    }
+}
+
+void
+DrawLineBetweenNeighboursEx(ID3D11DeviceContext *RenderContext, graph *Graph)
+{
+    node *FirstNode = Graph->Nodes;
+    FirstNode -= (Graph->NodesCount - 1);
+    for(int NodeIndex = 0;
+        NodeIndex < Graph->NodesCount;
+        ++NodeIndex)
+    {
+        node *ActualNode = FirstNode + NodeIndex;
+        
+        node_list *ActualNodeList = ActualNode->LastNeighbour;
+        while(ActualNodeList)
+        {
+            node *ActualNeighbour = ActualNodeList->Neighbour;
+            DrawLineBetweenNodes(RenderContext, ActualNode, ActualNeighbour);
+            ActualNodeList = ActualNodeList->PrevNeighbour;
+        }     
     }
 }
 
@@ -338,8 +364,10 @@ int WINAPI WinMain(HINSTANCE Instance,
 
         arena NodeArena = {};
         arena NeighboursArena = {};
+        arena NodeListArena = {};
         InitArena(&AppMemory, &NodeArena, Megabytes(20));
         InitArena(&AppMemory, &NeighboursArena, Megabytes(20));
+        InitArena(&AppMemory, &NodeListArena, Megabytes(20));
 
         // NOTE(manuto): Test Graph
         graph Graph = {};
@@ -347,35 +375,51 @@ int WINAPI WinMain(HINSTANCE Instance,
         node *B = AddNodeToGraph(&Graph, 100.0f, 200.0f, &NodeArena);
         node *C = AddNodeToGraph(&Graph, 100.0f, 100.0f, &NodeArena);
         node *D = AddNodeToGraph(&Graph, 100.0f, 0.0f, &NodeArena);
-        node *E = AddNodeToGraph(&Graph, 200.0f, 100.0f, &NodeArena);
-        node *F = AddNodeToGraph(&Graph, -200.0f, -50.0f, &NodeArena);
-
-        AddNeighboursToNode(A, B, &NeighboursArena);
+        node *E = AddNodeToGraph(&Graph, -200.0f, 100.0f, &NodeArena);
+       
+       /* 
+        AddNeighboursToNode(A, B, &NeighboursArena); 
         AddNeighboursToNode(A, C, &NeighboursArena);
-        AddNeighboursToNode(A, D, &NeighboursArena);
+        AddNeighboursToNode(A, D, &NeighboursArena); 
 
         AddNeighboursToNode(B, A, &NeighboursArena);
         AddNeighboursToNode(B, C, &NeighboursArena);
         AddNeighboursToNode(B, E, &NeighboursArena);
-
+        
         AddNeighboursToNode(C, A, &NeighboursArena);
         AddNeighboursToNode(C, B, &NeighboursArena);
         AddNeighboursToNode(C, E, &NeighboursArena);
-
+        
         AddNeighboursToNode(D, A, &NeighboursArena);
         AddNeighboursToNode(D, E, &NeighboursArena);
-
+        
         AddNeighboursToNode(E, B, &NeighboursArena);
         AddNeighboursToNode(E, C, &NeighboursArena);
         AddNeighboursToNode(E, D, &NeighboursArena);
+*/
+        // LinkList Test...
+        AddNodeToList(A, B, &NodeListArena); 
+        AddNodeToList(A, D, &NodeListArena); 
+
+        AddNodeToList(B, A, &NodeListArena);
+        AddNodeToList(A, C, &NodeListArena);
+        AddNodeToList(E, B, &NodeListArena);
 
 
-        AddNeighboursToNode(F, A, &NeighboursArena);
-        AddNeighboursToNode(F, B, &NeighboursArena);
-        AddNeighboursToNode(F, C, &NeighboursArena);
-        AddNeighboursToNode(F, D, &NeighboursArena);
-        AddNeighboursToNode(F, E, &NeighboursArena);
+        AddNodeToList(B, C, &NodeListArena);
+        AddNodeToList(B, E, &NodeListArena);
+        
+        AddNodeToList(C, A, &NodeListArena);
+        AddNodeToList(E, C, &NodeListArena);
+        AddNodeToList(E, D, &NodeListArena);
+        AddNodeToList(C, B, &NodeListArena);
+        AddNodeToList(C, E, &NodeListArena);
+        
+        AddNodeToList(D, A, &NodeListArena);
+        AddNodeToList(D, E, &NodeListArena);
+        
 
+        
         RECT ClientDimensions = {};
         GetClientRect(Window, &ClientDimensions);
         unsigned int Width  = ClientDimensions.right - ClientDimensions.left;
@@ -574,7 +618,7 @@ int WINAPI WinMain(HINSTANCE Instance,
             float ClearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
             RenderContext->ClearRenderTargetView(BackBuffer, ClearColor);
             
-
+/*
             DrawLineBetweenNeighbours(RenderContext, &Graph); 
             node *FirstNode = Graph.Nodes;
             FirstNode -= (Graph.NodesCount - 1);
@@ -586,8 +630,12 @@ int WINAPI WinMain(HINSTANCE Instance,
                 DrawRect(RenderContext, 
                          ActualNode->XPos, ActualNode->YPos,
                          10.0f, 10.0f,
-                         1.0f, 0.0f, 0.0f);
+                         1.0f, 0.0f, 0.3f);
             }
+*/
+
+            DrawLineBetweenNeighboursEx(RenderContext, &Graph);
+
             SwapChain->Present(0, 0);
              
         }
