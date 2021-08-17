@@ -8,7 +8,8 @@ struct node
     float XPos; 
     float YPos;
     float GlobalDistance;
-    float LoacalDistance;
+    float LocalDistance;
+    bool Visited;
     node *Parent; 
     node_list *LastNeighbour;
 };
@@ -28,6 +29,12 @@ struct mouse_neighbour_handler
 
 struct graph
 {
+    node *Start;
+    node *End;
+
+    node **NotTestedNodes;
+    int NotTestedNodesCount;
+
     node *Nodes;
     int NodesCount;
 };

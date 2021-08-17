@@ -186,9 +186,22 @@ mat4 OrthogonalMat4(int width, int height, float znear, float zfar)
     return result;
 }
 
-float LengthV3(v3 V)
+float LengthV2(v2 V)
 {
     return sqrtf(V.X*V.X + V.Y*V.Y);
+}
+
+v2 NormalizeV2(v2 V)
+{
+    v2 Result = {};
+    Result.X = V.X / LengthV2(V);
+    Result.Y = V.Y / LengthV2(V);
+    return Result;
+}  
+
+float LengthV3(v3 V)
+{
+    return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
 v3 NormalizeV3(v3 V)

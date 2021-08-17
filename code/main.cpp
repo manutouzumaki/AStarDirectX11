@@ -74,6 +74,8 @@ static char *PixelShaderSource  =
 "   return float4(frag.tex1.rgb, 1);\n"
 "}\0";
 
+
+
 // NOTE(manuto): Input Handles.
 #define LBUTTON 0
 #define MBUTTON 1
@@ -214,7 +216,7 @@ void InitializeDirecX11(HWND                   Window,
     unsigned int Height = ClientDimensions.bottom - ClientDimensions.top;
 
     // -1: Define the device types and feature level we want to check for.
-     D3D_DRIVER_TYPE DriverTypes[] =
+    D3D_DRIVER_TYPE DriverTypes[] =
     {
         D3D_DRIVER_TYPE_HARDWARE,
         D3D_DRIVER_TYPE_WARP,
@@ -264,7 +266,6 @@ void InitializeDirecX11(HWND                   Window,
 
     // -3: Create render target.
     ID3D11Texture2D *BackBufferTexture = 0;
-
     Result = (*SwapChain)->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&BackBufferTexture);
     Result = (*Device)->CreateRenderTargetView(BackBufferTexture, 0, BackBuffer);
     if(BackBufferTexture)
@@ -443,10 +444,10 @@ int WINAPI WinMain(HINSTANCE Instance,
         AppMemory.Memory = VirtualAlloc(0, AppMemory.Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
         arena NodeArena = {};
-        arena NeighboursArena = {};
+        arena AStarArena = {};
         arena NodeListArena = {};
         InitArena(&AppMemory, &NodeArena, Megabytes(20));
-        InitArena(&AppMemory, &NeighboursArena, Megabytes(20));
+        InitArena(&AppMemory, &AStarArena, Megabytes(20));
         InitArena(&AppMemory, &NodeListArena, Megabytes(20));
 
         // NOTE(manuto): Input Test
@@ -644,10 +645,26 @@ int WINAPI WinMain(HINSTANCE Instance,
             AddNodeOnMouseClick(&Input, &Graph, &NodeArena);
             SelectNode(&Input, &Graph, &MNH, &NodeListArena);
 
+            if(MouseOnClick(&Input, MBUTTON))
+            {
+                node *LastNode = Graph.Nodes;
+                node *FirstNode = LastNode - (Graph.NodesCount - 1);
+                Graph.Start = FirstNode;
+                Graph.End = LastNode;
+                if(Graph.Start && Graph.End)
+                {
+                    AStar(&Graph, &AStarArena);
+                }
+            }
+
             float ClearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
             RenderContext->ClearRenderTargetView(BackBuffer, ClearColor);
-            
+
             DrawLineBetweenNeighboursEx(RenderContext, &Graph);
+            if(Graph.End && Graph.Start)
+            {
+                DrawShotestPath(RenderContext, &Graph);
+            }
             node *FirstNode = Graph.Nodes;
             FirstNode -= (Graph.NodesCount - 1);
             for(int NodeIndex = 0;
@@ -673,6 +690,3 @@ int WINAPI WinMain(HINSTANCE Instance,
     }
     return 0;
 }
-
-
-
